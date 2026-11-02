@@ -1,0 +1,42 @@
+name: Free A-share daily screen V3
+on:
+  workflow_dispatch:
+  schedule:
+    # 19:17 Beijing time (11:17 UTC), weekdays; cron can be delayed.
+    - cron: '17 11 * * 1-5'
+permissions:
+  contents: write
+concurrency:
+  group: daily-screen
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free public data client
+        run: pip install 'baostock>=0.8.8,<1'
+      - name: Offline code self-test
+        run: python screener.py --self-test
+      - name: Download A-share daily data and score
+        run: python -u screener.py
+      - name: Commit verified public market outputs (never holdings)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [ ! -d data ]; then
+            echo 'No data generated (holiday or pre-publication).'; exit 0;
+          fi
+          git add -A data/
+          if git diff --cached --quiet; then
+            echo 'No new complete market data: retain previous release.'
+          else
+            git commit -m "Daily market data $(date -u +%Y-%m-%d)"
+            git push
+          fi
